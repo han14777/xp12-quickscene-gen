@@ -2,7 +2,8 @@
 their airport.json). Each item names an asset by X-Plane library path or by a file under the project's models
 folder, and becomes one DSF entry:
 
-  object   .obj / .agp    {"kind": "object", "path", "lon", "lat", "heading"}
+  object   .obj / .agp    {"kind": "object", "path", "lon", "lat", "heading", "agl": metres above ground (optional,
+                          written as OBJECT_AGL, e.g. equipment on a roof)}
   polygon  .fac           {"kind": "polygon", "path", "rings": [[[lon, lat], ...]], "height": metres (integer)}
            .for           {"kind": "polygon", "path", "rings", "density": 0-255, "fill": "area" | "line" | "points"}
            .pol           {"kind": "polygon", "path", "rings", "heading": texture heading in degrees}
@@ -13,6 +14,11 @@ DSF encoding (decompiled WED 2.7 output in X-Plane 12's Global Airports, see bui
 density + 256 x fill mode (0 area, 1 line, 2 points); draped polygon param = texture heading; line param = 1 when
 closed; object string param = spacing in metres. Rings run counter-clockwise (outer) / clockwise (holes), without
 repeating the first point. Facades and draped polygons are written with their outer ring only.
+
+Points may carry the extra values WED writes after lon lat and they are kept as they are: a facade wall type per
+point (3 values; open facades such as fences and jetways need only 2 points), UV coordinates of draped polygons
+(4 values, param 65535) or Bezier control points of lines (4 values). Rings with extra values are never re-oriented,
+because the values belong to the edge that starts at their point.
 """
 
 import json
@@ -44,10 +50,11 @@ def check_path(path: str) -> str:
 
 
 def _lonlat(p) -> list:
+    """[lon, lat] plus up to two extra values (wall type, UV, Bezier control point)."""
     lon, lat = float(p[0]), float(p[1])
     if not (-180 <= lon <= 180 and -90 <= lat <= 90):
         raise ValueError(f"Coordinate out of range: {p}")
-    return [round(lon, 9), round(lat, 9)]
+    return [round(lon, 9), round(lat, 9)] + [round(float(v), 9) for v in list(p)[2:4]]
 
 
 def validate_item(item: dict) -> dict:
@@ -60,14 +67,19 @@ def validate_item(item: dict) -> dict:
     if kind == "object":
         out["lon"], out["lat"] = _lonlat([item.get("lon"), item.get("lat")])
         out["heading"] = round(float(item.get("heading") or 0) % 360, 2)
+        if item.get("agl"):
+            agl = float(item["agl"])
+            if not 0 <= agl <= 2000:
+                raise ValueError("Height above ground must be 0-2000 m")
+            out["agl"] = round(agl, 2)
     elif kind == "polygon":
         rings = item.get("rings") or []
         fill = item.get("fill", "area") if ext == ".for" else "area"
         if fill not in FILLS:
             raise ValueError(f"Forest fill must be one of {', '.join(FILLS)}")
-        minimum = {"area": 3, "line": 2, "points": 1}[fill]
+        minimum = 2 if ext == ".fac" else {"area": 3, "line": 2, "points": 1}[fill]
         rings = [[_lonlat(p) for p in ring] for ring in rings]
-        rings = [r[:-1] if len(r) > 1 and r[0] == r[-1] else r for r in rings]
+        rings = [r[:-1] if len(r) > 1 and r[0][:2] == r[-1][:2] else r for r in rings]
         if not rings or len(rings[0]) < minimum:
             raise ValueError(f"{path}: needs at least {minimum} point(s)")
         out["rings"] = rings if ext == ".for" else rings[:1]
@@ -127,7 +139,7 @@ def save(job, items: list) -> list:
 # ---------- DSF entries ----------
 
 def _ccw(ring: list, outer: bool) -> list:
-    if len(ring) < 3:
+    if len(ring) < 3 or len(ring[0]) > 2:
         return ring
     poly = orient(Polygon(ring), sign=1.0 if outer else -1.0)
     return [list(c) for c in poly.exterior.coords[:-1]]
@@ -141,7 +153,7 @@ def dsf_entries(items: list, resolve_path) -> tuple[list, list]:
         path = resolve_path(item["path"])
         ext = ext_of(item["path"])
         if item["kind"] == "object":
-            objects.append((path, item["lon"], item["lat"], item["heading"]))
+            objects.append((path, item["lon"], item["lat"], item["heading"], item.get("agl", 0)))
         elif ext == ".fac":
             polygons.append((path, int(item["height"]), [_ccw(item["rings"][0], True)]))
         elif ext == ".for":
@@ -151,7 +163,8 @@ def dsf_entries(items: list, resolve_path) -> tuple[list, list]:
                 rings = [_ccw(r, i == 0) for i, r in enumerate(rings) if len(r) >= 3]
             polygons.append((path, item["density"] + 256 * FILLS[fill], rings))
         elif ext == ".pol":
-            polygons.append((path, int(item["heading"]), [_ccw(item["rings"][0], True)]))
+            uv = len(item["rings"][0][0]) == 4
+            polygons.append((path, 65535 if uv else int(item["heading"]), [_ccw(item["rings"][0], True)]))
         elif ext == ".lin":
             polygons.append((path, 1 if item["closed"] else 0, [item["points"]]))
         else:

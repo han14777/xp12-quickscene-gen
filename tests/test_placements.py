@@ -27,7 +27,7 @@ def test_validate_kinds_and_params():
     line = placements.validate_item({"path": "lib/l.lin", "points": [P(0, 0), P(5, 5)], "closed": 1})
     assert line["kind"] == "line" and line["closed"] is True
     for bad in ({"path": "../x.obj", "lon": 0, "lat": 0}, {"path": "x.png"},
-                {"path": "lib/a.fac", "rings": [[P(0, 0), P(1, 0)]]},
+                {"path": "lib/a.fac", "rings": [[P(0, 0)]]},
                 {"path": "lib/t.for", "rings": [[P(0, 0)]], "density": 300},
                 {"path": "lib/a.obj", "lon": 200, "lat": 0}):
         with pytest.raises(ValueError):
@@ -45,7 +45,7 @@ def test_dsf_params_follow_wed_encoding():
         {"path": "models/x/x.obj", "lon": LON0, "lat": LAT0},
     ])
     objects, polygons = placements.dsf_entries(items, lambda p: "objects/" + p if p.startswith("models/") else p)
-    assert objects == [("objects/models/x/x.obj", LON0, LAT0, 0.0)]
+    assert objects == [("objects/models/x/x.obj", LON0, LAT0, 0.0, 0)]
     assert [p[1] for p in polygons] == [9, 100 + 256, 255 + 512, 90, 0, 4]
     ring = polygons[0][2][0]
     area = sum(x1 * y2 - x2 * y1 for (x1, y1), (x2, y2) in zip(ring, ring[1:] + ring[:1]))
@@ -110,3 +110,27 @@ def test_end_to_end_with_placements_and_trees(tmp_path):
     assert params["767"] == 1 and params["511"] >= 1 and params["8"] == 1  # points forest, row, warehouse
     assert "OBJECT_DEF lib/airport/Ramp_Equipment/Tug.obj" in text
     assert vegetation.enabled(job.settings(settings))
+
+
+def test_dsf_import_keeps_wall_types_uv_and_decodes_params():
+    from cityscene import dsf_import
+    text = "\n".join([
+        "A", "800", "DSF2TEXT", "PROPERTY sim/exclude_obj 1/2/3/4",
+        "OBJECT_DEF lib/cars/car.obj", "POLYGON_DEF lib/fence.fac", "POLYGON_DEF lib/grass.pol",
+        "POLYGON_DEF lib/trees.for",
+        f"OBJECT 0 {LON0} {LAT0} 90",
+        "BEGIN_POLYGON 0 3 3", "BEGIN_WINDING",
+        f"POLYGON_POINT {LON0} {LAT0} 1", f"POLYGON_POINT {LON0 + 1e-4} {LAT0} 2", "END_WINDING", "END_POLYGON",
+        "BEGIN_POLYGON 1 65535 4", "BEGIN_WINDING",
+        *[f"POLYGON_POINT {LON0 + dx} {LAT0 + dy} {dx * 1e4} {dy * 1e4}" for dx, dy in ((0, 0), (1e-4, 0), (0, 1e-4))],
+        "END_WINDING", "END_POLYGON",
+        "BEGIN_POLYGON 2 767 2", "BEGIN_WINDING", f"POLYGON_POINT {LON0} {LAT0}", "END_WINDING", "END_POLYGON",
+    ])
+    items, report = dsf_import.parse_dsf_text(text)
+    assert report["imported"] == 4 and report["exclusions_skipped"] == 1
+    fence, grass, trees = items[1], items[2], items[3]
+    assert fence["height"] == 3 and fence["rings"][0][1][2] == 2  # wall type kept
+    objects, polygons = placements.dsf_entries(items, lambda p: p)
+    assert polygons[0][1] == 3 and len(polygons[0][2][0][0]) == 3
+    assert polygons[1][1] == 65535 and len(polygons[1][2][0][0]) == 4
+    assert trees["fill"] == "points" and polygons[2][1] == 767

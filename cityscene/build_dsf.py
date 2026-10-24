@@ -185,8 +185,11 @@ def build_text(tile: tuple, polygons: list, zones: list, settings: dict, objects
     lines += [f"OBJECT_DEF {path}" for path in object_index]
     lines += [f"POLYGON_DEF {path}" for path in facade_index]
     lines.append("")
-    for path, lon_, lat_, heading in objects:
-        lines.append(f"OBJECT {object_index[path]} {lon_:.9f} {lat_:.9f} {heading:g}")
+    for path, lon_, lat_, heading, *agl in objects:
+        if agl and agl[0]:
+            lines.append(f"OBJECT_AGL {object_index[path]} {lon_:.9f} {lat_:.9f} {heading:g} {agl[0]:g}")
+        else:
+            lines.append(f"OBJECT {object_index[path]} {lon_:.9f} {lat_:.9f} {heading:g}")
     for facade, height, lonlat in polygons:
         lines.append(f"BEGIN_POLYGON {facade_index[facade]} {max(1, round(height))} 2")
         lines.append("BEGIN_WINDING")
@@ -194,10 +197,12 @@ def build_text(tile: tuple, polygons: list, zones: list, settings: dict, objects
         lines.append("END_WINDING")
         lines.append("END_POLYGON")
     for path, param, rings in extra_polygons:
-        lines.append(f"BEGIN_POLYGON {facade_index[path]} {int(param)} 2")
+        # every point of a polygon has the same number of values (lon lat + wall type / UV / control point)
+        count = max(2, min(len(p) for ring in rings for p in ring))
+        lines.append(f"BEGIN_POLYGON {facade_index[path]} {int(param)} {count}")
         for ring in rings:
             lines.append("BEGIN_WINDING")
-            lines += [f"POLYGON_POINT {x:.9f} {y:.9f}" for x, y in ring]
+            lines += ["POLYGON_POINT " + " ".join(f"{v:.9f}" for v in p[:count]) for p in ring]
             lines.append("END_WINDING")
         lines.append("END_POLYGON")
     report = {"polygons": len(polygons), "facade_defs": len(facade_index), "exclusion_rects": rect_count,
