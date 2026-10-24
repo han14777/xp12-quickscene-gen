@@ -5,9 +5,9 @@ import shapely
 from pyproj import Transformer
 from shapely.geometry import shape
 
-from cityscene import clean as cb
-from cityscene.config import load_settings
-from cityscene.geo import utm_crs
+from quickscene import clean as cb
+from quickscene.config import load_settings
+from quickscene.geo import utm_crs
 
 SETTINGS = load_settings()
 # Pin defaults so config/local.yaml cannot affect the tests (local.yaml only holds paths)

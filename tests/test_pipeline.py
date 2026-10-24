@@ -6,10 +6,10 @@ from pathlib import Path
 import pytest
 from shapely.geometry import Polygon, box, mapping, shape
 
-from cityscene import build_dsf, classify, fetch, install, pipeline
-from cityscene.config import Job, load_settings, normalize_zone
-from cityscene.dsf_rects import exclusion_rects
-from cityscene.geo import Projector, tile_dir, tile_name, tiles_for, utm_crs
+from quickscene import build_dsf, classify, fetch, install, pipeline
+from quickscene.config import Job, load_settings, normalize_zone
+from quickscene.dsf_rects import exclusion_rects
+from quickscene.geo import Projector, tile_dir, tile_name, tiles_for, utm_crs
 
 from test_clean import LAT0, LON0, OsmBuilder
 
@@ -217,7 +217,7 @@ def _fake_fetch(job, builder, roads):
 
 
 def _dsftool():
-    from cityscene.config import dsftool_path
+    from quickscene.config import dsftool_path
     found = dsftool_path(SETTINGS)
     fallback = Path("D:/xptools_win_24-5/tools/DSFTool.exe")
     return str(found or (fallback if fallback.is_file() else "")) or None

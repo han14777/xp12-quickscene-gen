@@ -1,7 +1,7 @@
 [project]
-name = "xp12-cityscene-gen"
-version = "0.1.1"
-description = "Quick X-Plane 12 city scenery from OpenStreetMap (OSM -> facade DSF), with a browser map UI"
+name = "quickscene"
+version = "0.2.0"
+description = "QuickScene: X-Plane 12 city and airport scenery workbench (OSM, scenery libraries, 3D models, apt.dat editor)"
 requires-python = ">=3.11"
 license = { text = "GPL-3.0-or-later" }
 authors = [{ name = "Hanyi Zhang" }]
@@ -19,17 +19,17 @@ dependencies = [
 dev = ["pytest>=8.0"]
 
 [project.scripts]
-cityscene = "cityscene.cli:main"
+quickscene = "quickscene.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["cityscene*"]
+include = ["quickscene*"]
 
 [tool.setuptools.package-data]
-cityscene = ["gui/static/*"]
+quickscene = ["gui/static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

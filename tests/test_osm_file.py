@@ -6,8 +6,8 @@ import pytest
 
 pytest.importorskip("osmium")
 
-from cityscene import fetch, osm_file, pipeline  # noqa: E402
-from cityscene.config import Job, check_source  # noqa: E402
+from quickscene import fetch, osm_file, pipeline  # noqa: E402
+from quickscene.config import Job, check_source  # noqa: E402
 
 from test_pipeline import ZONE, _dsftool, make_settings  # noqa: E402
 from test_clean import LAT0, LON0  # noqa: E402

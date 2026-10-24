@@ -2,9 +2,9 @@
 
 import pytest
 
-from cityscene import overrides
-from cityscene.config import Job
-from cityscene.gui import picker
+from quickscene import overrides
+from quickscene.config import Job
+from quickscene.gui import picker
 
 from test_pipeline import ZONE, make_settings
 

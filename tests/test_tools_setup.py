@@ -5,7 +5,7 @@ import zipfile
 
 import pytest
 
-from cityscene import config, tools_setup
+from quickscene import config, tools_setup
 
 
 class FakeResponse:

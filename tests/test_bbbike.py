@@ -4,7 +4,7 @@ from urllib.parse import parse_qs, urlparse
 
 from shapely.geometry import Point, Polygon, mapping, shape
 
-from cityscene import bbbike
+from quickscene import bbbike
 
 from test_clean import LAT0, LON0
 

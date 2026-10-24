@@ -1,8 +1,8 @@
-CityScene - X-Plane 12 city scenery from OpenStreetMap
+QuickScene - X-Plane 12 city and airport scenery
 
-1. Unzip this folder anywhere you can write to (for example Documents\CityScene).
+1. Unzip this folder anywhere you can write to (for example Documents\QuickScene).
    Generated scenery and jobs are stored inside this folder.
-2. Double-click CityScene.exe. A console window opens and the map UI opens in your browser
+2. Double-click QuickScene.exe. A console window opens and the map UI opens in your browser
    (http://127.0.0.1:8765/). Keep the console window open while you use the UI; close it to quit.
 3. On first start, DSFTool is downloaded automatically from Laminar Research (files.x-plane.com)
    into the tools folder. X-Plane 12 is found automatically. Both can be changed under
@@ -11,5 +11,5 @@ CityScene - X-Plane 12 city scenery from OpenStreetMap
 Requirements: Windows 10/11 x64, X-Plane 12, an internet connection (map tiles, OpenStreetMap data).
 Nothing else needs to be installed.
 
-Command line use: CityScene.exe --help
+Command line use: QuickScene.exe --help
 See README.md for details. License: GPL-3.0-or-later (LICENSE).

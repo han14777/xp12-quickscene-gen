@@ -48,7 +48,7 @@ dsf:
   # Only default buildings are excluded (objects, facades); roads, polygons, lines and forests are kept
   exclusion_types: [obj, fac]
   # How far the generated buildings stay visible (km). Default facades draw up to their own LOD (lod_m below,
-  # 8-18 km); past that, merged low-poly blocks (cityscene/impostors.py) take over up to this distance. Values at or
+  # 8-18 km); past that, merged low-poly blocks (quickscene/impostors.py) take over up to this distance. Values at or
   # below a facade's LOD add nothing for it: default facades cannot be made to stop earlier
   render_distance_km: 30
   impostors:

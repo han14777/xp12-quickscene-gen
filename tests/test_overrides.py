@@ -6,8 +6,8 @@ import math
 import pytest
 from shapely.geometry import box, mapping
 
-from cityscene import classify, overrides, pipeline
-from cityscene.config import Job
+from quickscene import classify, overrides, pipeline
+from quickscene.config import Job
 
 from test_clean import LAT0, LON0, OsmBuilder
 from test_pipeline import SETTINGS, ZONE, _dsftool, _fake_fetch, make_settings

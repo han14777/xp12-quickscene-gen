@@ -5,8 +5,8 @@ from collections import Counter
 
 import pytest
 
-from cityscene import pipeline, placements, vegetation
-from cityscene.config import Job
+from quickscene import pipeline, placements, vegetation
+from quickscene.config import Job
 
 from test_clean import LAT0, LON0, OsmBuilder
 from test_pipeline import ZONE, _dsftool, make_settings
@@ -113,7 +113,7 @@ def test_end_to_end_with_placements_and_trees(tmp_path):
 
 
 def test_dsf_import_keeps_wall_types_uv_and_decodes_params():
-    from cityscene import dsf_import
+    from quickscene import dsf_import
     text = "\n".join([
         "A", "800", "DSF2TEXT", "PROPERTY sim/exclude_obj 1/2/3/4",
         "OBJECT_DEF lib/cars/car.obj", "POLYGON_DEF lib/fence.fac", "POLYGON_DEF lib/grass.pol",

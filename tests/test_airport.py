@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from cityscene.airport import aptdat, create, model, osm_airport, project, validate
-from cityscene.airport.sources import build_index
+from quickscene.airport import aptdat, create, model, osm_airport, project, validate
+from quickscene.airport.sources import build_index
 
 from test_pipeline import _dsftool, make_settings
 
@@ -159,7 +159,7 @@ def test_osm_draft():
 
 
 def make_settings_stub():
-    from cityscene.config import load_settings
+    from quickscene.config import load_settings
     return load_settings()
 
 

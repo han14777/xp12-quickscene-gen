@@ -3,10 +3,10 @@
 import copy
 import struct
 
-from cityscene import impostors
-from cityscene.config import load_settings
-from cityscene.geo import Projector, utm_crs
-from cityscene.obj8 import read_obj8
+from quickscene import impostors
+from quickscene.config import load_settings
+from quickscene.geo import Projector, utm_crs
+from quickscene.obj8 import read_obj8
 
 SETTINGS = load_settings()
 LON0, LAT0 = 144.96, -37.81

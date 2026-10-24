@@ -5,9 +5,9 @@ import json
 import pytest
 from PIL import Image
 
-from cityscene import assets, library
-from cityscene.config import Job
-from cityscene.gui import routes
+from quickscene import assets, library
+from quickscene.config import Job
+from quickscene.gui import routes
 
 from test_pipeline import ZONE, make_settings
 
@@ -126,8 +126,11 @@ def test_asset_readers(xp):
     assert obj["groups"] == [{"start": 0, "count": 6, "texture": "main"}]
     assert obj["lights"] == [[0.0, 2.0, 0.0]]
     assert obj["textures"]["main"].startswith("xp:Custom Scenery/L - Test Lib/tex/box.png")
-    png = assets.texture_png(obj["textures"]["main"], settings)
-    assert png[:4] == b"\x89PNG"
+    image, mime = assets.texture_image(obj["textures"]["main"], settings)
+    assert mime == "image/jpeg" and image[:2] == b"\xff\xd8"  # opaque: JPEG
+    Image.new("RGBA", (8, 8), (0, 0, 0, 0)).save(lib / "tex" / "clear.png")
+    image, mime = assets.texture_image(assets.file_token(lib / "tex" / "clear.png", settings), settings)
+    assert mime == "image/png" and image[:4] == b"\x89PNG"  # transparent: PNG
     fac = assets.read_asset(lib / "house.fac", settings)
     assert fac["facade_type"] == 1 and fac["floors_max"] == 8 and len(fac["walls"]) == 1
     assert fac["walls"][0]["center"] == [[100.0, 400.0]] and fac["walls"][0]["tex_size"] == [1024.0, 1024.0]
@@ -148,7 +151,7 @@ def test_routes(xp):
     found, data = routes.dispatch("GET", "/api/asset", {"ref": ["lib:lib/test/box.obj"]}, {}, settings)
     assert data["type"] == "obj" and data["libraries"] == ["L - Test Lib"]
     found, (body, ctype) = routes.dispatch("GET", "/api/texture", {"t": [data["textures"]["main"]]}, {}, settings)
-    assert ctype == "image/png" and body[:4] == b"\x89PNG"
+    assert ctype == "image/jpeg" and body[:2] == b"\xff\xd8"
     job = Job.create("routes", ZONE, settings)
     item = {"path": "lib/test/box.obj", "lon": 144.961, "lat": -37.81, "heading": 12}
     found, saved = routes.dispatch("POST", "/api/jobs/routes/placements", {}, {"items": [item]}, settings)

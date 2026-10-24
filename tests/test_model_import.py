@@ -8,8 +8,8 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from cityscene import model_import
-from cityscene.obj8 import read_obj8
+from quickscene import model_import
+from quickscene.obj8 import read_obj8
 
 CUBE_OBJ = """mtllib cube.mtl
 v 0 0 0

@@ -2,7 +2,7 @@
 
 import pytest
 
-from cityscene import fetch
+from quickscene import fetch
 
 
 class FakeResponse:
