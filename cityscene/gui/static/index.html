@@ -19,6 +19,13 @@
       </div>
     </div>
     <p class="sub" data-i18n="subtitle"></p>
+    <div class="mode-row">
+      <div class="tabs mode-tabs" role="tablist">
+        <button class="tab" role="tab" data-mode="city" data-i18n="modeCity"></button>
+        <button class="tab" role="tab" data-mode="airport" data-i18n="modeAirport"></button>
+      </div>
+      <button id="open-library" class="ghost" data-i18n="libraryBtn"></button>
+    </div>
   </header>
 
   <details id="settings-box" class="step">
@@ -31,6 +38,8 @@
     </label>
     <button id="save-settings" data-i18n="save"></button>
     <p class="hint" data-i18n="dsftoolHint"></p>
+    <label><span data-i18n="imageryUrl"></span><input id="imagery-url" placeholder="https://example.org/tiles/{z}/{x}/{y}.jpg"></label>
+    <p class="hint" data-i18n="imageryHint"></p>
     <div id="servers-box">
       <div class="label-row"><span data-i18n="osmServers"></span><button id="test-servers" class="ghost" data-i18n="testServers"></button></div>
       <ul id="server-list" class="item-list"></ul>
@@ -40,6 +49,7 @@
     </div>
   </details>
 
+  <div id="city-panel">
   <!-- Start: choose new / open / import while no project is open -->
   <section id="start-box">
     <div class="tabs" role="tablist">
@@ -107,6 +117,22 @@
         <p class="hint" data-i18n="sourceFileHint"></p>
       </div>
     </div>
+    <div id="extras-box" class="box">
+      <div class="label-text" data-i18n="extrasTitle"></div>
+      <label class="check"><input id="extra-trees" type="checkbox"> <span data-i18n="extraTrees"></span></label>
+      <label class="check"><input id="extra-rows" type="checkbox"> <span data-i18n="extraRows"></span></label>
+      <label class="check"><input id="extra-woods" type="checkbox"> <span data-i18n="extraWoods"></span></label>
+      <details class="sub-details">
+        <summary data-i18n="extraAssets"></summary>
+        <label><span data-i18n="extraTreeAsset"></span>
+          <span class="path-row"><input id="extra-tree-asset"><button class="libpick" data-for="extra-tree-asset" data-types="for" data-i18n="fromLibrary"></button></span></label>
+        <label><span data-i18n="extraRowAsset"></span>
+          <span class="path-row"><input id="extra-row-asset"><button class="libpick" data-for="extra-row-asset" data-types="for" data-i18n="fromLibrary"></button></span></label>
+        <label><span data-i18n="extraWoodAsset"></span>
+          <span class="path-row"><input id="extra-wood-asset"><button class="libpick" data-for="extra-wood-asset" data-types="for" data-i18n="fromLibrary"></button></span></label>
+      </details>
+      <p class="hint" data-i18n="extrasHint"></p>
+    </div>
     <label class="check"><input id="force-fetch" type="checkbox"> <span data-i18n="forceFetch"></span></label>
     <button id="build" class="primary"></button>
   </details>
@@ -125,6 +151,7 @@
   <details id="result-box" class="step" open hidden>
     <summary><h2 data-i18n="s4"></h2></summary>
     <dl id="summary"></dl>
+    <div id="deps"></div>
     <label class="check"><input id="show-buildings" type="checkbox" checked> <span data-i18n="showBuildings"></span></label>
     <div class="row">
       <button id="install" class="primary" data-i18n="install"></button>
@@ -154,12 +181,16 @@
             <option value="modern" data-i18n="styleModern"></option>
             <option value="classic" data-i18n="styleClassic"></option>
             <option value="universal" data-i18n="styleUniversal"></option>
+            <option value="custom" data-i18n="styleCustom"></option>
           </select>
+        </label>
+        <label id="edit-facade-row" hidden><span data-i18n="editFacade"></span>
+          <span class="path-row"><input id="edit-facade" placeholder="lib/buildings/facades/..."><button class="libpick" data-for="edit-facade" data-types="fac" data-owner="job" data-i18n="fromLibrary"></button></span>
         </label>
       </div>
       <div id="edit-model" hidden>
         <label><span data-i18n="modelPath"></span>
-          <span class="path-row"><input id="edit-model-path" list="model-files" placeholder="eureka/eureka.obj"><button class="browse" data-pick="obj" data-for="edit-model-path" data-i18n="browse"></button></span>
+          <span class="path-row"><input id="edit-model-path" list="model-files" placeholder="eureka/eureka.obj"><button class="libpick" data-for="edit-model-path" data-types="obj,agp" data-owner="job" data-i18n="fromLibrary"></button><button class="browse" data-pick="obj" data-for="edit-model-path" data-i18n="browse"></button></span>
         </label>
         <datalist id="model-files"></datalist>
         <p class="hint" id="models-hint"></p>
@@ -180,6 +211,35 @@
     <button id="apply-edits" class="primary" data-i18n="applyEdits"></button>
   </details>
 
+  <details id="place-box" class="step" open hidden>
+    <summary><h2 data-i18n="s6"></h2></summary>
+    <p class="hint" data-i18n="placeHint"></p>
+    <div class="toolbar" id="place-tools">
+      <button data-place="object" data-i18n="placeObject"></button>
+      <button data-place="fac" data-i18n="placeFacade"></button>
+      <button data-place="for" data-i18n="placeForest"></button>
+      <button data-place="pol" data-i18n="placePolygon"></button>
+      <button data-place="lin" data-i18n="placeLine"></button>
+    </div>
+    <p id="place-status" class="hint"></p>
+    <div id="place-form" hidden></div>
+    <div class="label-row"><span id="place-count"></span><input id="place-filter" class="small" data-i18n-placeholder="filterPh"></div>
+    <ul id="place-list" class="item-list compact"></ul>
+    <div class="row wrap">
+      <button id="place-save" class="primary" data-i18n="placeSave"></button>
+      <button id="place-apply" data-i18n="placeApply"></button>
+    </div>
+    <details class="sub-details">
+      <summary data-i18n="placeImportTitle"></summary>
+      <p class="hint" data-i18n="placeImportHint"></p>
+      <span class="path-row"><input id="place-import-path" placeholder="…/Custom Scenery/SomePack"><button class="browse" data-pick="folder" data-for="place-import-path" data-i18n="browse"></button></span>
+      <button id="place-import" data-i18n="placeImportBtn"></button>
+    </details>
+  </details>
+  </div>
+
+  <div id="airport-panel" hidden></div>
+
   <p id="message" role="status"></p>
   <footer data-i18n="footer"></footer>
 </aside>
@@ -188,9 +248,67 @@
 </div>
 <main id="map"></main>
 
+<!-- Library browser with 3D preview (shared by city and airport) -->
+<div id="lib-modal" class="modal" hidden>
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="lib-title">
+    <div class="modal-head">
+      <h2 id="lib-title" data-i18n="libTitle"></h2>
+      <div class="tabs lib-tabs">
+        <button class="tab" data-libtab="libs" data-i18n="libTabLibs"></button>
+        <button class="tab" data-libtab="models" data-i18n="libTabModels"></button>
+      </div>
+      <button id="lib-close" class="ghost" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="lib-left">
+        <div id="lib-filters">
+          <input id="lib-q" data-i18n-placeholder="libSearchPh">
+          <div class="row">
+            <select id="lib-pack"></select>
+          </div>
+          <div class="row">
+            <select id="lib-type"></select>
+            <select id="lib-cat"></select>
+          </div>
+          <label class="check small"><input id="lib-hidden" type="checkbox"> <span data-i18n="libHidden"></span></label>
+        </div>
+        <div id="lib-models-bar" hidden>
+          <p class="hint" id="lib-models-dir"></p>
+          <div class="row three">
+            <label><span data-i18n="importScale"></span><input id="lib-import-scale" type="number" step="any" value="1"></label>
+            <label><span data-i18n="importUp"></span><select id="lib-import-up"><option value="y">Y</option><option value="z">Z</option></select></label>
+          </div>
+          <button id="lib-import" class="primary" data-i18n="importModel"></button>
+          <p class="hint" data-i18n="importModelHint"></p>
+        </div>
+        <div id="lib-count" class="hint"></div>
+        <ul id="lib-list"></ul>
+        <button id="lib-more" class="ghost" hidden data-i18n="libMore"></button>
+      </div>
+      <div class="lib-right">
+        <div id="viewer"><div id="viewer-msg" class="hint"></div></div>
+        <div id="lib-info"></div>
+        <div class="row wrap">
+          <button id="lib-use" class="primary" data-i18n="libUse" hidden></button>
+          <button id="lib-copy" class="ghost" data-i18n="libCopy"></button>
+          <button id="lib-reset-view" class="ghost" data-i18n="libResetView"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
 <script src="/static/i18n.js"></script>
+<script src="/static/i18n_more.js"></script>
 <script src="/static/app.js"></script>
+<script src="/static/viewer.js"></script>
+<script src="/static/library.js"></script>
+<script src="/static/editing.js"></script>
+<script src="/static/placements.js"></script>
+<script src="/static/airport.js"></script>
 </body>
 </html>

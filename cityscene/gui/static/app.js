@@ -31,11 +31,35 @@ let selectedId = null;
 const EDIT_COLORS = { edit: "#0b9e9e", delete: "#8a8f98", model: "#7b3fb5" };
 
 // ---------- map ----------
-const map = L.map("map", { zoomControl: true }).setView([-37.8136, 144.9631], 13);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  maxZoom: 19,
-  attribution: "© OpenStreetMap contributors",
-}).addTo(map);
+const map = L.map("map", { zoomControl: true, preferCanvas: true, maxZoom: 21 }).setView([-37.8136, 144.9631], 13);
+// Base maps: OSM, satellite imagery for tracing (Esri World Imagery), and an optional imagery URL from Local settings
+const BASE_LAYERS = {
+  osm: L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 21, maxNativeZoom: 19, attribution: "© OpenStreetMap contributors",
+  }),
+  satellite: L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+    maxZoom: 21, maxNativeZoom: 19, attribution: "Imagery © Esri, Maxar, Earthstar Geographics",
+  }),
+};
+let layerControl = null;
+
+function customImageryUrl() { return store.get("cityscene.imageryUrl") || ""; }
+
+function buildLayerControl() {
+  if (layerControl) map.removeControl(layerControl);
+  if (BASE_LAYERS.custom) { map.removeLayer(BASE_LAYERS.custom); delete BASE_LAYERS.custom; }
+  const url = customImageryUrl();
+  if (url) BASE_LAYERS.custom = L.tileLayer(url, { maxZoom: 22, maxNativeZoom: 20, attribution: "Custom imagery" });
+  const names = { osm: t("baseOsm"), satellite: t("baseSatellite"), custom: t("baseCustom") };
+  const chosen = BASE_LAYERS[store.get("cityscene.baseLayer")] ? store.get("cityscene.baseLayer") : "osm";
+  Object.entries(BASE_LAYERS).forEach(([k, layer]) => { if (k === chosen) layer.addTo(map); else map.removeLayer(layer); });
+  layerControl = L.control.layers(Object.fromEntries(Object.entries(BASE_LAYERS).map(([k, l]) => [names[k], l])), {}, { position: "topright" }).addTo(map);
+}
+
+map.on("baselayerchange", (e) => {
+  const key = Object.keys(BASE_LAYERS).find((k) => BASE_LAYERS[k] === e.layer);
+  if (key) store.set("cityscene.baseLayer", key);
+});
 
 // ---------- panel layout: drag to resize, collapse, fold steps (remembered per browser) ----------
 const PANEL_MIN = 280;
@@ -68,6 +92,34 @@ function setCollapsed(collapsed) {
 }
 
 setPanelWidth(Number(store.get("cityscene.panelWidth")) || PANEL_DEFAULT);
+
+// ---------- mode: city / airport ----------
+let mode = store.get("cityscene.mode") === "airport" ? "airport" : "city";
+
+function currentMode() { return mode; }
+
+function setMode(m) {
+  mode = m === "airport" ? "airport" : "city";
+  store.set("cityscene.mode", mode);
+  document.querySelectorAll(".mode-tabs .tab").forEach((b) => b.classList.toggle("on", b.dataset.mode === mode));
+  $("city-panel").hidden = mode !== "city";
+  $("airport-panel").hidden = mode !== "airport";
+  document.body.dataset.mode = mode;
+  const cityLayers = [zoneLayer, buildingsLayer, typeof Place !== "undefined" ? Place.layer : null].filter(Boolean);
+  if (mode === "city") {
+    cityLayers.forEach((l) => l.addTo(map));
+    if (drawControl) map.addControl(drawControl);
+    if (buildingsLayer) legend.addTo(map);
+  } else {
+    cityLayers.forEach((l) => map.removeLayer(l));
+    if (drawControl) map.removeControl(drawControl);
+    map.removeControl(legend);
+    if (typeof cancelDraw === "function") cancelDraw();
+  }
+  if (typeof onModeChanged === "function") onModeChanged(mode);
+}
+
+document.querySelectorAll(".mode-tabs .tab").forEach((b) => { b.onclick = () => setMode(b.dataset.mode); });
 document.body.classList.toggle("panel-collapsed", store.get("cityscene.panelCollapsed") === "1");
 
 $("panel-toggle").addEventListener("pointerdown", (e) => e.stopPropagation());
@@ -132,10 +184,16 @@ function addDrawControl() {
     },
     edit: { featureGroup: zoneLayer },
   });
-  map.addControl(drawControl);
+  if (mode === "city") map.addControl(drawControl);
 }
 
-map.on(L.Draw.Event.CREATED, (e) => { zoneLayer.addLayer(e.layer); updateArea(); });
+// Shapes drawn with the area toolbar become the area; shapes drawn by the item and airport tools (editing.js
+// drawShape, which sets activeDraw) are handled there
+map.on(L.Draw.Event.CREATED, (e) => {
+  if (typeof activeDraw !== "undefined" && activeDraw) return;
+  zoneLayer.addLayer(e.layer);
+  updateArea();
+});
 map.on(L.Draw.Event.EDITED, updateArea);
 map.on(L.Draw.Event.DELETED, updateArea);
 
@@ -177,6 +235,9 @@ function updateArea() {
 // ---------- language ----------
 function refreshLanguage() {
   applyStaticText();
+  buildLayerControl();
+  if (typeof refreshAirportLanguage === "function") refreshAirportLanguage();
+  if (typeof fillPlaceForm === "function") { fillPlaceForm(); renderPlaceList(); }
   addDrawControl();
   updateArea();
   if (lastStatus) renderStatus(lastStatus);
@@ -326,6 +387,16 @@ $("server-add-btn").onclick = () => {
   saveServers();
 };
 
+$("imagery-url").value = customImageryUrl();
+$("imagery-url").onchange = () => {
+  const v = $("imagery-url").value.trim();
+  if (v && !/^https?:\/\/.+\{z\}.*/.test(v)) return say("badImageryUrl", {}, "warn");
+  store.set("cityscene.imageryUrl", v);
+  if (v) store.set("cityscene.baseLayer", "custom");
+  buildLayerControl();
+  say("imagerySaved", {}, "ok");
+};
+
 $("save-settings").onclick = async () => {
   try {
     await api("/api/settings", { body: { xplane_root: $("xplane-root").value, dsftool: $("dsftool").value } });
@@ -472,7 +543,7 @@ function updateMode() {
   $("job-box").hidden = !editing;
   $("new-names").hidden = open;
   $("build").textContent = t(open ? "rebuild" : "build");
-  if (!open) for (const id of ["progress-box", "result-box", "edit-box"]) $(id).hidden = true;
+  if (!open) for (const id of ["progress-box", "result-box", "edit-box", "place-box"]) $(id).hidden = true;
   $("project-name").textContent = currentJob || "";
   $("project-pack").textContent = currentDetail ? t("projectPack", { pack: currentDetail.meta.scenery_name }) : "";
 }
@@ -559,6 +630,8 @@ $("switch-project").onclick = () => {
   $("job-name").value = "";
   $("scenery-name").value = "";
   setSource(null);
+  setExtras(null);
+  clearPlacements();
   $("log").textContent = "";
   say(null, { text: "" });
   showTab(startTab);
@@ -578,6 +651,7 @@ async function openJob(name, fit) {
   const rd = d.meta.options?.dsf?.render_distance_km;
   if (rd) $("render-distance").value = rd;
   setSource(d.meta.source);
+  setExtras(d.meta.options?.extras);
   zoneLayer.clearLayers();
   L.geoJSON(d.zone).eachLayer((l) => zoneLayer.addLayer(l));
   updateArea();
@@ -586,6 +660,7 @@ async function openJob(name, fit) {
   updateMode();
   if (d.run.state === "running") startPolling();
   else if (d.built) loadBuildings();
+  loadPlacements();
 }
 
 $("build").onclick = async () => {
@@ -606,6 +681,8 @@ $("build").onclick = async () => {
     if (dh > 0) options.heights = { default_height_m: dh };
     const rd = parseFloat($("render-distance").value);
     if (rd > 0) options.dsf = { render_distance_km: rd };
+    const extras = readExtras();
+    if (extras) options.extras = extras;
     await api("/api/jobs", { body: {
       name, scenery_name: sceneryName, zone: zoneLayer.toGeoJSON(), options, source, overwrite: existing,
     } });
@@ -658,6 +735,8 @@ function render(d) {
   });
   $("result-box").hidden = !d.built || running;
   $("edit-box").hidden = !d.built || running;
+  $("place-box").hidden = running;
+  renderDeps(d.reports.build && d.reports.build.dependencies);
   $("install").disabled = d.installed;
   $("uninstall").disabled = !d.installed;
   const c = d.reports.clean, k = d.reports.classify, b = d.reports.build;
@@ -763,7 +842,9 @@ function fillEditForm() {
   $("edit-action").value = kind === "edit" ? "keep" : kind;
   $("edit-height").value = e.height_m ?? "";
   $("edit-height").placeholder = tallest;
-  $("edit-style").value = e.style ?? "";
+  $("edit-style").value = e.facade ? "custom" : e.style ?? "";
+  $("edit-facade").value = e.facade ?? "";
+  $("edit-facade-row").hidden = $("edit-style").value !== "custom";
   $("edit-model-path").value = e.model?.path ?? "";
   $("edit-heading").value = e.model?.heading ?? 0;
   $("edit-east").value = e.model?.offset_e_m ?? 0;
@@ -779,6 +860,7 @@ function showActionFields() {
 }
 
 $("edit-action").onchange = showActionFields;
+$("edit-style").onchange = () => { $("edit-facade-row").hidden = $("edit-style").value !== "custom"; };
 
 function renderEditCount() {
   const counts = { edit: 0, delete: 0, model: 0 };
@@ -810,7 +892,10 @@ $("edit-save").onclick = () => {
       offset_e_m: parseFloat($("edit-east").value) || 0, offset_n_m: parseFloat($("edit-north").value) || 0,
     } });
   }
-  return saveEdit({ height_m: $("edit-height").value || null, style: $("edit-style").value || null });
+  const style = $("edit-style").value;
+  if (style === "custom" && !$("edit-facade").value.trim()) return say("needFacade", {}, "warn");
+  return saveEdit({ height_m: $("edit-height").value || null, style: style && style !== "custom" ? style : null,
+    facade: style === "custom" ? $("edit-facade").value.trim() : null });
 };
 
 $("edit-reset").onclick = () => saveEdit(null);
@@ -884,9 +969,48 @@ $("uninstall").onclick = async () => {
 };
 
 applyStaticText();
+buildLayerControl();
 updatePanelToggle();
 addDrawControl();
 updateArea();
 loadStatus().catch(sayError);
 showTab(startTab);
 if (bbbikeRequest()) { $("source-file-box").hidden = false; showBbbike("bbbikeSent"); }
+// the other scripts (viewer, library, placements, airport) load after this one
+window.addEventListener("load", () => { if (!currentJob) setExtras(null); setMode(mode); });
+
+// ---------- trees from OSM (settings section extras) ----------
+const EXTRA_DEFAULTS = {
+  tree_asset: "lib/vegetation/trees/deciduous/maple_medium.for",
+  tree_row_asset: "lib/vegetation/trees/deciduous/oak_medium.for",
+  wood_asset: "lib/vegetation/forests/mixed/temperate.for",
+};
+
+function setExtras(x) {
+  x = x || {};
+  $("extra-trees").checked = Boolean(x.trees);
+  $("extra-rows").checked = Boolean(x.tree_rows);
+  $("extra-woods").checked = Boolean(x.woods);
+  $("extra-tree-asset").value = x.tree_asset || EXTRA_DEFAULTS.tree_asset;
+  $("extra-row-asset").value = x.tree_row_asset || EXTRA_DEFAULTS.tree_row_asset;
+  $("extra-wood-asset").value = x.wood_asset || EXTRA_DEFAULTS.wood_asset;
+}
+
+function readExtras() {
+  const x = { trees: $("extra-trees").checked, tree_rows: $("extra-rows").checked, woods: $("extra-woods").checked };
+  for (const [key, id] of [["tree_asset", "extra-tree-asset"], ["tree_row_asset", "extra-row-asset"], ["wood_asset", "extra-wood-asset"]]) {
+    const v = $(id).value.trim();
+    if (v && v !== EXTRA_DEFAULTS[key]) x[key] = v;
+  }
+  return x.trees || x.tree_rows || x.woods || Object.keys(x).length > 3 ? x : null;
+}
+
+// ---------- libraries the generated pack needs ----------
+function renderDeps(deps) {
+  const box = $("deps");
+  if (!deps) { box.innerHTML = ""; return; }
+  const libs = Object.entries(deps.libraries || {});
+  box.innerHTML = `<div class="label-text">${esc(t("depsTitle"))}</div><ul class="dep-list">` +
+    libs.map(([name, paths]) => `<li>${esc(name)} <span class="hint">(${paths.length})</span></li>`).join("") + "</ul>" +
+    (deps.missing && deps.missing.length ? `<p class="warn-text">${esc(t("depsMissing", { n: deps.missing.length, list: deps.missing.slice(0, 5).join(", ") }))}</p>` : "");
+}

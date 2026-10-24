@@ -16,7 +16,8 @@ from pathlib import Path
 KINDS = {
     "folder": None,
     "exe": [("Programs", "*.exe"), ("All files", "*.*")],
-    "obj": [("X-Plane objects", "*.obj *.agp"), ("All files", "*.*")],
+    "obj": [("3D models", "*.obj *.agp *.gltf *.glb"), ("X-Plane objects", "*.obj *.agp"),
+            ("glTF", "*.gltf *.glb"), ("All files", "*.*")],
     "osm": [("OSM data", "*.pbf *.osm *.bz2"), ("All files", "*.*")],
 }
 _lock = threading.Lock()

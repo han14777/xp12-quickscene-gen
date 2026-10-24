@@ -5,7 +5,7 @@ Textures are named by a token (file_token) and served as PNG by texture_png: X-P
 .png of the same name (and the other way round), so both are tried. DDS (BC1-BC7) is decoded by Pillow and the
 image is shrunk to at most TEXTURE_MAX px, cached in <cache_dir>/textures/.
 
-Only what a preview needs is read: the first level of detail, no animation (animated parts are shown at rest),
+Only what a preview needs is read: the nearest level of detail, no animation (animated parts are shown at rest),
 lights as points. Formats per Laminar's OBJ8, facade, forest, draped polygon, line and AGP specifications and the
 XP12 default library files (facades: TEX_SIZE pixel coordinates with SCALE metres per texture; forests: MESH /
 VERTEX / IDX blocks for 3D trees next to the classic TREE billboard rows).
@@ -123,7 +123,7 @@ def _floats(words, start, count):
 
 def read_obj(path: Path, settings: dict) -> dict:
     """{"type": "obj", positions, normals, uvs (flat lists), groups: [{start, count, texture: main|draped}], indices,
-    textures: {main, lit, draped}, lights: [[x, y, z]], bounds}. Only the first LOD range is drawn."""
+    textures: {main, lit, draped}, lights: [[x, y, z]], bounds}. Only LOD buckets starting at 0 m are drawn."""
     rows = _lines(path)
     if len(rows) < 3 or not rows[1] or rows[1][0] not in ("800", "850", "1000"):
         version = rows[1][0] if len(rows) > 1 and rows[1] else "?"
@@ -152,8 +152,9 @@ def read_obj(path: Path, settings: dict) -> dict:
         elif key == "TEXTURE_DRAPED" and len(words) > 1:
             textures["draped"] = _tex(base, words[1], settings)
         elif key == "ATTR_LOD":
+            # LOD buckets may overlap (several starting at 0 m are all drawn up close): keep those starting at 0
             lod_count += 1
-            in_first_lod = lod_count == 1
+            in_first_lod = len(words) > 1 and float(words[1]) == 0
         elif key == "ATTR_draped":
             draped = True
         elif key == "ATTR_no_draped":

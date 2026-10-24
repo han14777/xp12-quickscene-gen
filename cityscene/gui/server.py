@@ -21,6 +21,7 @@ API:
   POST /api/pick                        {kind: folder | exe | obj, title, initial} native file dialog -> {path}
   POST /api/jobs/<name>/models          {path} copy an OBJ (and its textures) into the job's models folder
   POST /api/import                      {path, name, overwrite} import a pack as a job
+Library, previews, model import, placed items and airport projects: see routes.py.
 """
 
 import json
@@ -33,7 +34,7 @@ from urllib.parse import parse_qs, urlparse
 
 from cityscene import install as installer
 from cityscene import bbbike, fetch, overrides, pipeline, transfer
-from cityscene.gui import picker
+from cityscene.gui import picker, routes
 from cityscene.config import Job, dsftool_path, list_jobs, load_settings, normalize_zone, save_local, xplane_root
 from cityscene.log import get_logger
 from cityscene.tools_setup import ensure_dsftool
@@ -42,7 +43,7 @@ log = get_logger("gui")
 
 STATIC = Path(__file__).resolve().parent / "static"
 CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
-                 ".css": "text/css; charset=utf-8"}
+                 ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml"}
 # Maximum blocks returned for the preview; more makes the browser sluggish
 PREVIEW_LIMIT = 30000
 
@@ -173,6 +174,11 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, data, code: int = 200) -> None:
         self._send(code, json.dumps(data, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
 
+    def _result(self, result) -> None:
+        if isinstance(result, tuple) and isinstance(result[0], bytes):
+            return self._send(200, result[0], result[1])
+        return self._json(result)
+
     def _error(self, exc: Exception, code: int = 400) -> None:
         self._json({"error": str(exc)}, code)
 
@@ -189,6 +195,9 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         parts = [p for p in url.path.split("/") if p]
         try:
+            found, result = routes.dispatch("GET", url.path, parse_qs(url.query), {}, load_settings())
+            if found:
+                return self._result(result)
             if not parts:
                 return self._static("index.html")
             if parts[0] == "static" and len(parts) == 2:
@@ -229,18 +238,23 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": "not found"}, 404)
         except FileNotFoundError as exc:
             self._error(exc, 404)
-        except ValueError as exc:
+        except (ValueError, RuntimeError) as exc:
             self._error(exc)
         except Exception as exc:
+            log.error("%s", traceback.format_exc())
             self._error(exc, 500)
 
     def do_POST(self):
         if not self._same_origin():
             return self._json({"error": "forbidden"}, 403)
-        parts = [p for p in urlparse(self.path).path.split("/") if p]
+        url = urlparse(self.path)
+        parts = [p for p in url.path.split("/") if p]
         try:
             body = self._body()
             settings = load_settings()
+            found, result = routes.dispatch("POST", url.path, parse_qs(url.query), body, settings)
+            if found:
+                return self._result(result)
             if parts == ["api", "settings"]:
                 save_local({"xplane": {"root": body.get("xplane_root", "").strip()},
                             "tools": {"dsftool": body.get("dsftool", "").strip()}})
@@ -275,7 +289,8 @@ class Handler(BaseHTTPRequestHandler):
                     _start_build(name, bool(body.get("force_fetch")), body.get("steps") or None)
                     return self._json({"started": True})
                 if action == "models":
-                    return self._json(overrides.import_model(Job.open(name, settings), Path(str(body.get("path") or ""))))
+                    return self._json(overrides.import_model(Job.open(name, settings), Path(str(body.get("path") or "")),
+                                                             float(body.get("scale") or 1), str(body.get("up") or "y")))
                 if action == "overrides":
                     job = Job.open(name, settings)
                     building_id = str(body.get("building_id") or "")
@@ -291,6 +306,7 @@ class Handler(BaseHTTPRequestHandler):
         except (RuntimeError, ValueError, KeyError, FileExistsError, FileNotFoundError) as exc:
             self._error(exc)
         except Exception as exc:
+            log.error("%s", traceback.format_exc())
             self._error(exc, 500)
 
     def _static(self, name: str) -> None:
