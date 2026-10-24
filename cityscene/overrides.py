@@ -9,6 +9,8 @@
 - height_m: new height of the building's tallest block; every block is scaled by the same factor, so podiums
   and towers keep their proportions (applied in classify)
 - style: facade style for the whole building (glass / modern / classic / universal; applied in classify)
+- facade: a specific facade for the whole building, by library path (any installed library, e.g. picked in the
+  library browser) or a .fac under jobs/<name>/models/; replaces style (classify)
 - delete: the building is left out of the DSF (build_dsf)
 - model: the building's facades and distant blocks are replaced by an OBJ placed at the building origin plus the
   offset (metres east / north), turned by heading (degrees clockwise from true north). path is either a file under
@@ -54,15 +56,21 @@ def model_is_local(job, path: str) -> bool:
     return (job.models_dir / path).is_file()
 
 
-def import_model(job, source: Path) -> dict:
-    """Make an OBJ chosen anywhere on disk usable by this job: a file already under the models folder is used in
-    place; otherwise the OBJ goes to models/<name>/ together with the textures it names (each also in its .png /
-    .dds twin, which X-Plane may load instead), and its texture lines are rewritten to the copied file names.
+def import_model(job, source: Path, scale: float = 1.0, up: str = "y") -> dict:
+    """Make a model chosen anywhere on disk usable by this job (model_import.import_any: X-Plane OBJ8 is copied,
+    Wavefront / glTF converted)."""
+    from cityscene.model_import import import_any
+    return import_any(job.models_dir, source, scale, up)
+
+
+def import_model_into(models: Path, source: Path) -> dict:
+    """Copy an X-Plane OBJ / AGP into a models folder: a file already under it is used in place; otherwise the OBJ
+    goes to <models>/<name>/ together with the textures it names (each also in its .png / .dds twin, which X-Plane
+    may load instead), and its texture lines are rewritten to the copied file names.
     Returns {"path": path relative to the models folder, "copied": [...], "missing": [...]}."""
     source = Path(source)
     if not source.is_file() or source.suffix.lower() not in (".obj", ".agp"):
         raise ValueError(f"{source} is not an .obj or .agp file")
-    models = job.models_dir
     try:
         return {"path": source.resolve().relative_to(models.resolve()).as_posix(), "copied": [], "missing": []}
     except ValueError:
@@ -101,7 +109,13 @@ def validate(job, edit: dict, settings: dict) -> dict:
         if not 1 <= height <= settings["heights"]["max_valid_height_m"]:
             raise ValueError(f"Height must be between 1 and {settings['heights']['max_valid_height_m']} m")
         out["height_m"] = round(height, 1)
-    if edit.get("style"):
+    if edit.get("facade"):
+        path = str(edit["facade"]).strip().replace("\\", "/")
+        pure = PurePosixPath(path)
+        if pure.is_absolute() or ".." in pure.parts or ":" in path or not path.lower().endswith(".fac"):
+            raise ValueError("Facade must be a .fac library path or a file in the job's models folder")
+        out["facade"] = path
+    if edit.get("style") and not out.get("facade"):
         if edit["style"] not in STYLES:
             raise ValueError(f"Unknown facade style {edit['style']!r}; choose from {', '.join(STYLES)}")
         out["style"] = edit["style"]

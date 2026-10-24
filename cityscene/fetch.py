@@ -31,7 +31,22 @@ QUERIES = {
         '  way["building:part"]{area};\n  relation["building:part"]{area};\n);\n'
     ),
     "roads": 'way["highway"]{area};\n',
+    # Only downloaded when trees are switched on (settings extras, vegetation.py)
+    "vegetation": (
+        '(\n  node["natural"="tree"]{area};\n  way["natural"="tree_row"]{area};\n'
+        '  way["landuse"="forest"]{area};\n  way["natural"="wood"]{area};\n'
+        '  relation["landuse"="forest"]{area};\n  relation["natural"="wood"]{area};\n);\n'
+    ),
 }
+
+
+def kinds_for(settings: dict) -> list:
+    """The data kinds a job needs: buildings and roads, plus vegetation when any tree option is on."""
+    extras = settings.get("extras") or {}
+    wanted = ["buildings", "roads"]
+    if extras.get("trees") or extras.get("tree_rows") or extras.get("woods"):
+        wanted.append("vegetation")
+    return wanted
 
 
 def query_bbox(zones: list, buffer_m: float) -> tuple[float, float, float, float]:
@@ -186,7 +201,7 @@ def fetch(job, settings: dict, force: bool = False) -> dict:
     log.info("Bounding box (W,S,E,N) = %s, %d chunks", tuple(round(v, 5) for v in bbox), len(cells))
 
     files = {}
-    for kind in QUERIES:
+    for kind in kinds_for(settings):
         files[kind] = []
         for n, swne in enumerate(cells, 1):
             cached = None if force else cached_cover(job.raw_dir, kind, swne)

@@ -10,7 +10,7 @@ Ported from melbourne-cbd-xp12 pipeline/03_classify.py (without heritage registe
    (style_fallback) and finally to the closest floor range (height_clamped)
 3. Choices are stable (crc32 of building_id): the same on every run, varied between buildings
 4. Per-building edits (overrides.py) apply first: height_m scales the building's blocks, style replaces the
-   preferred styles; every block carries "edit" (None / edit / delete / model) for build_dsf and the map preview
+   preferred styles, facade (any library .fac) is used as is for every block; every block carries "edit" (None / edit / delete / model) for build_dsf and the map preview
 
 Output: processed/buildings_classified.geojson and classify_report.json
 """
@@ -115,7 +115,10 @@ def classify(features: list, settings: dict, edits: dict | None = None) -> tuple
         p = feature["properties"]
         category, reason = categories[p["building_id"]]
         floors = floors_for(p["height_m"], cfg["facade_floor_height_m"])
-        if shared[p["building_id"]] is not None:
+        custom = edits.get(p["building_id"], {}).get("facade")
+        if custom:
+            facade, fallback, clamped = {"path": custom, "style": "custom"}, False, False
+        elif shared[p["building_id"]] is not None:
             facade, fallback, clamped = shared[p["building_id"]], False, False
         else:
             facade, fallback, clamped = choose_facade(floors, styles_for(p["building_id"]), facades, p["building_id"])

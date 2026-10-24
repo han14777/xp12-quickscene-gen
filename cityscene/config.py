@@ -32,7 +32,7 @@ BUNDLED_DSFTOOL = PROJECT_ROOT / "tools" / "DSFTool.exe"
 # Job names become folder names, and pack names appear in Custom Scenery and scenery_packs.ini: keep them plain
 _NAME_RE = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
 # Settings sections a job's options may override
-OPTION_SECTIONS = ("heights", "classification", "clean", "roads", "dsf")
+OPTION_SECTIONS = ("heights", "classification", "clean", "roads", "dsf", "extras")
 
 
 def deep_merge(base: dict, override: dict) -> dict:

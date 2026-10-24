@@ -18,6 +18,12 @@ The DSF text follows melbourne-cbd-xp12 pipeline/04_build_dsf.py, all verified i
   the pack root>, OBJECT <index> <lon> <lat> <heading> (README.dsf2text), with sim/require_object 1/0 like the
   facades so they load at any object density
 
+- Placed items (placements.py: objects, facades, forests, draped polygons, lines, object strings from any library or
+  the job's models folder) and OSM trees (vegetation.py) are added as OBJECT / BEGIN_POLYGON entries; polygons get
+  one BEGIN_WINDING per ring. The virtual paths used are looked up in the installed libraries
+  (library.py) and listed in build_report.json and README.txt as required libraries; paths no installed library
+  exports are reported as missing (X-Plane would show nothing for them)
+
 Output: processed/<tile>.dsf.txt, build/<pack>/Earth nav data/<10-degree folder>/<tile>.dsf,
 build/<pack>/objects/impostors/, README.txt, build/<pack>/cityscene/ (the job, for re-importing; transfer.py),
 build_report.json
@@ -35,7 +41,7 @@ from shapely.geometry import Polygon, box, mapping, shape
 from shapely.geometry.polygon import orient
 
 from cityscene.tools_setup import ensure_dsftool
-from cityscene import impostors, overrides, transfer
+from cityscene import impostors, overrides, placements, transfer, vegetation
 from cityscene.dsf_rects import exclusion_rects
 from cityscene.geo import Projector, metric_crs_for, tile_dir, tile_name, tiles_for, zones_union
 from cityscene.log import get_logger
@@ -134,9 +140,11 @@ def _add_piece(polygon_m, p: dict, projector: Projector, by_tile: dict, stats: C
     by_tile[(lat0, lon0)].append((p["facade"], p["height_m"], lonlat))
 
 
-def build_text(tile: tuple, polygons: list, zones: list, settings: dict, objects: list = ()) -> tuple[str, dict]:
+def build_text(tile: tuple, polygons: list, zones: list, settings: dict, objects: list = (),
+               extra_polygons: list = ()) -> tuple[str, dict]:
     """DSF text for one tile. zones are the area Features; only their part inside this tile becomes exclusions.
-    objects: [(object path relative to the pack root, lon, lat, heading)]."""
+    objects: [(object path relative to the pack root, lon, lat, heading)]; extra_polygons: [(path, param, rings)]
+    for placed items and trees (placements.dsf_entries)."""
     lat, lon = tile
     tile_box = box(lon, lat, lon + 1, lat + 1)
     lines = [
@@ -172,6 +180,8 @@ def build_text(tile: tuple, polygons: list, zones: list, settings: dict, objects
     facade_index: dict[str, int] = {}
     for facade, _, _ in polygons:
         facade_index.setdefault(facade, len(facade_index))
+    for path, _, _ in extra_polygons:
+        facade_index.setdefault(path, len(facade_index))
     lines += [f"OBJECT_DEF {path}" for path in object_index]
     lines += [f"POLYGON_DEF {path}" for path in facade_index]
     lines.append("")
@@ -183,8 +193,15 @@ def build_text(tile: tuple, polygons: list, zones: list, settings: dict, objects
         lines += [f"POLYGON_POINT {x:.9f} {y:.9f}" for x, y in lonlat]
         lines.append("END_WINDING")
         lines.append("END_POLYGON")
+    for path, param, rings in extra_polygons:
+        lines.append(f"BEGIN_POLYGON {facade_index[path]} {int(param)} 2")
+        for ring in rings:
+            lines.append("BEGIN_WINDING")
+            lines += [f"POLYGON_POINT {x:.9f} {y:.9f}" for x, y in ring]
+            lines.append("END_WINDING")
+        lines.append("END_POLYGON")
     report = {"polygons": len(polygons), "facade_defs": len(facade_index), "exclusion_rects": rect_count,
-              "objects": len(objects)}
+              "objects": len(objects), "placed_polygons": len(extra_polygons)}
     return "\n".join(lines) + "\n", report
 
 
@@ -216,21 +233,57 @@ def verify_dsf(dsftool: Path, dsf_path: Path, expected: dict, roundtrip_path: Pa
         raise RuntimeError(f"Decompiled DSF does not match the input: input {expected}, decompiled {actual}")
 
 
+def local_resolver(job):
+    """Maps an asset path to the path written in the DSF: files in the job's models folder are copied to
+    objects/models/ in the pack; anything else is a library path. Raises for a local-looking path that is missing."""
+    def resolve(path: str) -> str:
+        if overrides.model_is_local(job, path):
+            return f"objects/models/{path}"
+        if path.startswith(("objects/", "models/")):
+            raise RuntimeError(f"{path} not found in {job.models_dir}")
+        return path
+    return resolve
+
+
 def place_models(features: list, edits: dict, job) -> dict:
     """{tile: [(object path relative to the pack root, lon, lat, heading)]} for buildings edited to a custom model."""
     wanted = {bid: e["model"] for bid, e in edits.items() if overrides.edit_kind(e) == "model"}
     origins = overrides.building_origins([f for f in features if f["properties"]["building_id"] in wanted])
+    resolve = local_resolver(job)
     out = defaultdict(list)
     for building_id, origin in origins.items():
         model = wanted[building_id]
         lon, lat = overrides.offset_lonlat(*origin, model["offset_e_m"], model["offset_n_m"])
-        path = model["path"]
-        if overrides.model_is_local(job, path):
-            path = f"objects/models/{path}"
-        elif path.startswith(("objects/", "models/")):
-            raise RuntimeError(f"Model {model['path']} for {building_id} not found in {job.models_dir}")
+        try:
+            path = resolve(model["path"])
+        except RuntimeError as exc:
+            raise RuntimeError(f"Model for {building_id}: {exc}") from exc
         out[(math.floor(lat), math.floor(lon))].append((path, lon, lat, model["heading"]))
     return out
+
+
+def library_report(vpaths) -> dict | None:
+    """Required libraries for the virtual paths used (None when the X-Plane folder is unknown)."""
+    from cityscene import library
+    from cityscene.config import load_settings
+    try:
+        index = library.get_index(load_settings())
+    except Exception as exc:  # no X-Plane folder (e.g. on a build machine): skip the check
+        log.info("Library check skipped: %s", exc)
+        return None
+    return index.dependencies(p for p in vpaths if not p.startswith("objects/"))
+
+
+def dependency_text(deps: dict | None) -> str:
+    if not deps:
+        return ""
+    lines = ["", "Required libraries (install them in Custom Scenery):"]
+    for name, paths in sorted(deps["libraries"].items()):
+        lines.append(f"- {name} ({len(paths)} assets)")
+    if deps["missing"]:
+        lines.append("Assets not found in any installed library:")
+        lines += [f"- {p}" for p in deps["missing"][:50]]
+    return "\n".join(lines) + "\n"
 
 
 def run(job, settings: dict) -> dict:
@@ -245,10 +298,18 @@ def run(job, settings: dict) -> dict:
     zones = job.zones()
     projector = Projector(metric_crs_for(zones))
     edits = overrides.load(job)
+    resolve = local_resolver(job)
+    for feature in features:  # per-building facades from the models folder live in the pack
+        feature["properties"]["facade"] = resolve(feature["properties"]["facade"])
     by_tile, stats = prepare_polygons(features, projector, edits)
     models = place_models(features, edits, job)
+    placed = placements.load(job)
+    placed_objects, placed_polygons = placements.dsf_entries(placed, resolve)
+    trees, tree_report = vegetation.build(job, settings)
+    extra_objects, extra_polygons = placements.split_by_tile(placed_objects, placed_polygons + trees, stats)
     # Exclusions cover the whole area, so tiles without buildings are written too (to clear default autogen)
-    tiles = sorted(set(tiles_for(zones_union(zones))) | set(by_tile) | set(models))
+    tiles = sorted(set(tiles_for(zones_union(zones))) | set(by_tile) | set(models) | set(extra_objects)
+                   | set(extra_polygons))
 
     build_dir = job.build_dir(settings)
     earth = build_dir / "Earth nav data"
@@ -258,16 +319,23 @@ def run(job, settings: dict) -> dict:
         if old_output.exists():
             shutil.rmtree(old_output)
     build_dir.mkdir(parents=True, exist_ok=True)
-    if any(path.startswith("objects/models/") for placed in models.values() for path, *_ in placed):
+    used = [p for placed_list in models.values() for p, *_ in placed_list]
+    used += [o[0] for o in placed_objects] + [p[0] for p in placed_polygons]
+    used += [f["properties"]["facade"] for f in features]
+    if any(p.startswith("objects/models/") for p in used):
         shutil.copytree(job.models_dir, models_dir)
     impostors.write_atlas(impostor_dir)
-    (build_dir / "README.txt").write_text(ATTRIBUTION.format(name=job.scenery_name), encoding="utf-8")
+    deps = library_report(used + [t[0] for t in trees])
+    (build_dir / "README.txt").write_text(ATTRIBUTION.format(name=job.scenery_name) + dependency_text(deps),
+                                          encoding="utf-8")
 
     report = {"input_blocks": len(features), "tiles": {}, **dict(stats)}
     for tile in tiles:
         name = tile_name(*tile)
         objects, imp_stats = impostors.build_impostors(name, by_tile.get(tile, []), settings, impostor_dir, projector)
-        text, tile_report = build_text(tile, by_tile.get(tile, []), zones, settings, models.get(tile, []) + objects)
+        text, tile_report = build_text(tile, by_tile.get(tile, []), zones, settings,
+                                       models.get(tile, []) + extra_objects.get(tile, []) + objects,
+                                       extra_polygons.get(tile, []))
         tile_report.update(imp_stats, models=len(models.get(tile, [])))
         text_path = processed / f"{name}.dsf.txt"
         text_path.write_text(text, encoding="utf-8", newline="\n")
@@ -277,13 +345,16 @@ def run(job, settings: dict) -> dict:
         verify_dsf(dsftool, dsf_path, summarize_text(text), processed / f"{name}.roundtrip.txt")
         tile_report["dsf_bytes"] = dsf_path.stat().st_size
         report["tiles"][name] = tile_report
-        log.info("Tile %s: %d facade polygons (%d facades), %d exclusion rectangles, %d bytes, decompile check passed", name,
-                 tile_report["polygons"], tile_report["facade_defs"], tile_report["exclusion_rects"],
-                 tile_report["dsf_bytes"])
+        log.info("Tile %s: %d facade polygons (%d definitions), %d placed / tree polygons, %d exclusion rectangles, "
+                 "%d bytes, decompile check passed", name, tile_report["polygons"], tile_report["facade_defs"],
+                 tile_report["placed_polygons"], tile_report["exclusion_rects"], tile_report["dsf_bytes"])
     report["polygons"] = sum(t["polygons"] for t in report["tiles"].values())
     report["render_distance_km"] = settings["dsf"]["render_distance_km"]
-    for key in ("impostor_objects", "impostor_triangles", "models"):
+    for key in ("impostor_objects", "impostor_triangles", "models", "placed_polygons"):
         report[key] = sum(t[key] for t in report["tiles"].values())
+    report["placed_items"] = len(placed)
+    report["vegetation"] = tree_report
+    report["dependencies"] = deps
     if not report["impostor_objects"]:
         shutil.rmtree(impostor_dir)
     if impostor_dir.parent.is_dir() and not any(impostor_dir.parent.iterdir()):
@@ -298,6 +369,14 @@ def run(job, settings: dict) -> dict:
     if report["models"] or report.get("blocks_deleted"):
         log.info("Edits: %d custom models placed, %d blocks replaced by models, %d blocks deleted", report["models"],
                  report.get("blocks_replaced_by_model", 0), report.get("blocks_deleted", 0))
+    if placed:
+        log.info("Placed items: %d (%d skipped across tile edges)", len(placed),
+                 report.get("placements_skipped_cross_tile", 0))
+    if deps:
+        log.info("Libraries used: %s", ", ".join(sorted(deps["libraries"])) or "none")
+        if deps["missing"]:
+            log.warning("%d asset paths are not exported by any installed library (they will not show): %s",
+                        len(deps["missing"]), ", ".join(deps["missing"][:5]))
     log.info("Render distance %g km: %d distant-block objects, %d triangles", report["render_distance_km"],
              report["impostor_objects"], report["impostor_triangles"])
     log.info("Scenery pack: %s", build_dir)

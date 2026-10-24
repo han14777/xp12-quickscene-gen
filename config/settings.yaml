@@ -18,6 +18,9 @@ tools:
 paths:
   jobs_dir: "jobs"
   build_dir: "build"
+  # Airport projects (airports/<ICAO>/airport.json) and caches (library index, converted textures)
+  airports_dir: "airports"
+  cache_dir: "cache"
 
 osm:
   # One URL or a list of public mirrors, tried in turn when a server is busy (502 / 504) or fails
@@ -62,6 +65,20 @@ install:
   # order), or at the top if none matches. Exclusions only affect packs loaded later (lower in the file), so the
   # pack must sit above third-party autogen such as simHeaven
   insert_before: ["*GLOBAL_AIRPORTS*"]
+
+# Trees from OSM (off by default). Single trees (natural=tree) and tree rows (natural=tree_row) use forests in
+# point / line mode as WED does; woods (landuse=forest, natural=wood) become area forests. All are kept clearance_m
+# away from the generated buildings and off drivable roads. Assets are X-Plane 12 default library paths
+extras:
+  trees: false
+  tree_rows: false
+  woods: false
+  tree_asset: "lib/vegetation/trees/deciduous/maple_medium.for"
+  tree_row_asset: "lib/vegetation/trees/deciduous/oak_medium.for"
+  wood_asset: "lib/vegetation/forests/mixed/temperate.for"
+  density: 255
+  clearance_m: 2.0
+  min_wood_m2: 200.0
 
 heights:
   # Height priority: OSM height -> building:levels x level_height_m -> default

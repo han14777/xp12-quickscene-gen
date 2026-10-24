@@ -21,12 +21,28 @@ from urllib.parse import urlparse
 
 import requests
 
-from cityscene.fetch import USER_AGENT, query_bbox
+from cityscene.fetch import USER_AGENT, kinds_for, query_bbox
 from cityscene.log import get_logger
 
 log = get_logger("fetch")
 
-KINDS = {"buildings": ("building", "building:part"), "roads": ("highway",)}
+KINDS = {"buildings": ("building", "building:part"), "roads": ("highway",), "vegetation": ("natural", "landuse")}
+VEGETATION = {("natural", "tree_row"), ("landuse", "forest"), ("natural", "wood")}
+
+
+def wanted(kind: str, tags) -> bool:
+    """Whether an element with these tags belongs to kind (vegetation keeps only the tags vegetation.py reads)."""
+    if kind == "vegetation":
+        return any(tags.get(k) == v for k, v in VEGETATION)
+    return any(k in tags for k in KINDS[kind])
+
+
+def _relation_kind(tags) -> str | None:
+    if "building" in tags or "building:part" in tags:
+        return "buildings"
+    if wanted("vegetation", tags) and tags.get("type") == "multipolygon":
+        return "vegetation"
+    return None
 SUFFIXES = (".pbf", ".osm", ".bz2", ".gz")
 
 
@@ -82,23 +98,31 @@ def _check_coverage(path: Path, bbox) -> None:
         log.warning("%s covers only part of the area's bounding box; buildings outside it will be missing", path.name)
 
 
-def extract(path: Path, bbox) -> dict:
+def extract(path: Path, bbox, kinds=("buildings", "roads")) -> dict:
     """{kind: Overpass-style {"elements": [...]}} for the bounding box (west, south, east, north)."""
     import osmium
 
-    keys = [k for group in KINDS.values() for k in group]
+    keys = [k for kind in kinds for k in KINDS[kind]]
     nodes = {}                     # id -> (lon, lat) of nodes of kept ways
     ways = {}                      # id -> (refs, tags) of kept tagged ways
     relations = {}                 # id -> (members, tags)
     member_ways = set()
+    trees = []                     # natural=tree nodes (vegetation)
 
     for obj in osmium.FileProcessor(str(path)).with_locations().with_filter(osmium.filter.KeyFilter(*keys)):
-        if obj.is_way():
+        if obj.is_node():
+            if "vegetation" in kinds and obj.tags.get("natural") == "tree" and                     _inside(bbox, obj.location.lon, obj.location.lat):
+                trees.append({"type": "node", "id": obj.id, "lon": obj.location.lon, "lat": obj.location.lat,
+                              "tags": dict(obj.tags)})
+        elif obj.is_way():
+            tags = dict(obj.tags)
+            if not any(wanted(k, tags) for k in kinds):
+                continue
             coords = [(n.ref, n.lon, n.lat) for n in obj.nodes if n.location.valid()]
             if any(_inside(bbox, lon, lat) for _, lon, lat in coords):
-                ways[obj.id] = ([n.ref for n in obj.nodes], dict(obj.tags))
+                ways[obj.id] = ([n.ref for n in obj.nodes], tags)
                 nodes.update({ref: (lon, lat) for ref, lon, lat in coords})
-        elif obj.is_relation() and ("building" in obj.tags or "building:part" in obj.tags):
+        elif obj.is_relation() and _relation_kind(obj.tags) in kinds:
             members = [{"type": {"n": "node", "w": "way", "r": "relation"}[m.type], "ref": m.ref, "role": m.role}
                        for m in obj.members]
             relations[obj.id] = (members, dict(obj.tags))
@@ -125,14 +149,16 @@ def extract(path: Path, bbox) -> dict:
                 for ref in sorted(refs) if ref in nodes]
 
     out = {}
-    for kind, kind_keys in KINDS.items():
+    for kind in kinds:
         elements, used_nodes = [], set()
         for wid, (refs, tags) in ways.items():
-            if any(k in tags for k in kind_keys):
+            if wanted(kind, tags):
                 elements.append({"type": "way", "id": wid, "nodes": refs, "tags": tags})
                 used_nodes.update(refs)
-        if kind == "buildings":
+        if kind in ("buildings", "vegetation"):
             for rid, (members, tags) in kept_relations.items():
+                if _relation_kind(tags) != kind:
+                    continue
                 elements.append({"type": "relation", "id": rid, "members": members, "tags": tags})
                 for m in members:
                     if m["type"] == "way" and m["ref"] in outlines and m["ref"] not in ways:
@@ -144,7 +170,7 @@ def extract(path: Path, bbox) -> dict:
                         used_nodes.update(refs)
                     elif m["type"] == "way" and m["ref"] in ways:
                         used_nodes.update(ways[m["ref"]][0])
-        out[kind] = {"elements": node_elements(used_nodes) + elements}
+        out[kind] = {"elements": node_elements(used_nodes) + elements + (trees if kind == "vegetation" else [])}
     return out
 
 
@@ -161,7 +187,7 @@ def fetch_file(job, settings: dict, source: str, force: bool = False) -> dict:
     if not force and index.exists():
         previous = json.loads(index.read_text(encoding="utf-8"))
         old = previous.get("bbox_wsen")
-        if previous.get("source") == signature and old and old[0] <= bbox[0] and old[1] <= bbox[1] \
+        if previous.get("source") == signature and old and set(kinds_for(settings)) <= set(previous["files"]) and old[0] <= bbox[0] and old[1] <= bbox[1] \
                 and old[2] >= bbox[2] and old[3] >= bbox[3] \
                 and all((job.raw_dir / n).exists() for names in previous["files"].values() for n in names):
             log.info("Using data already read from %s", path.name)
@@ -169,7 +195,7 @@ def fetch_file(job, settings: dict, source: str, force: bool = False) -> dict:
 
     _check_coverage(path, bbox)
     log.info("Reading %s (%.1f MB) for (W,S,E,N) = %s", path.name, stat.st_size / 1e6, tuple(round(v, 5) for v in bbox))
-    data = extract(path, bbox)
+    data = extract(path, bbox, kinds_for(settings))
     files = {}
     for kind, result in data.items():
         result["_meta"] = {"source": signature, "read_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}

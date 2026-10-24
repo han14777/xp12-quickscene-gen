@@ -24,7 +24,7 @@ def test_import_model_copies_textures_and_rewrites_paths(job, tmp_path):
                                    "POINT_COUNTS 0 0 0 0\n", encoding="latin-1")
     r = overrides.import_model(job, src / "tower.obj")
     assert r == {"path": "tower/tower.obj", "copied": ["tower.dds", "tower.obj", "tower.png"],
-                 "missing": ["../textures/tower_LIT.png"]}
+                 "missing": ["../textures/tower_LIT.png"], "converted": False, "warnings": []}
     text = (job.models_dir / "tower" / "tower.obj").read_text(encoding="latin-1")
     assert "TEXTURE tower.png\n" in text and "TEXTURE_LIT ../textures/tower_LIT.png" in text
     assert overrides.model_is_local(job, r["path"])

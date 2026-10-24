@@ -1,6 +1,8 @@
 # Generated output and caches
 build/
 jobs/*
+airports/*
+cache/
 !jobs/.gitkeep
 __pycache__/
 *.pyc
