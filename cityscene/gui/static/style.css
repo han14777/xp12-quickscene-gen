@@ -265,3 +265,5 @@ textarea { width: 100%; font: 12px ui-monospace, Consolas, monospace; background
 #apt-findings { max-height: 260px; overflow-y: auto; }
 #apt-findings li { cursor: pointer; font-size: 12px; }
 .mode-tabs .tab { font-size: 13px; }
+.vx-handle.vx-on { background: #f2a900; border-color: #fff; }
+.vx-ctrl { background: #fff; border: 2px solid #2f6fb0; border-radius: 50%; }

@@ -487,6 +487,7 @@ map.on("zoomend", () => {
 // ---------- selection ----------
 function selectApt(listName, id) {
   const prev = Apt.selected;
+  Apt.vertex = null;
   Apt.selected = listName ? { list: listName, id } : null;
   if (Apt.editor) { Apt.editor.remove(); Apt.editor = null; }
   if (prev) { const it = findItem(prev); if (it) redrawItem(prev.list, it); }
@@ -509,6 +510,9 @@ function nodeEditorOptions(item, rings, closed, min) {
       n.lon = lng;
     },
     make: (lat, lng, near) => ({ lon: lng, lat, ctrl: null, line: near.line || 0, light: near.light || 0 }),
+    getCtrl: (n) => (n.ctrl ? [n.ctrl[1], n.ctrl[0]] : null),
+    setCtrl: (n, lat, lng) => { n.ctrl = [lng, lat]; },
+    onSelect: (n) => { Apt.vertex = n; renderProps(); },
     closed, min,
   };
 }
@@ -537,11 +541,13 @@ function attachVertexEditor(listName, item) {
       make: (lat, lng, near) => [lng, lat, ...near.slice(2)], closed: !isLine, min: isLine || placeExt(item) === "fac" ? 2 : 3 };
   }
   if (!o) return;
+  const keepVertex = Apt.vertex;
   Apt.editor = new VertexEditor(map, Object.assign(o, {
     onDrag: live,
     onChange: () => { markDirty(); redrawItem(listName, item); if (listName === "taxi_edges" || listName === "taxi_nodes") renderAirport(); renderProps(); },
   }));
   Apt.editor.layer.on("mousedown", snapApt);
+  if (keepVertex) { Apt.editor.selected = keepVertex; Apt.editor.render(); }
 }
 
 function deleteSelectedApt() {
@@ -738,6 +744,18 @@ function renderProps() {
   }
   const ln = sel.list;
   let html = `<div class="prop-head"><b>${esc(t("one_" + ln))}</b> ${esc(itemLabel(ln, item))}</div>`;
+  const chainNodes = ln === "lines" ? item.nodes : ln === "pavements" || ln === "boundaries" ? item.rings.flat() : null;
+  const vx = chainNodes && Apt.vertex && chainNodes.includes(Apt.vertex) ? Apt.vertex : null;
+  if (vx) {
+    html += `<div class="sub-form node-form"><div class="label-text">${esc(t("pointN", { n: chainNodes.indexOf(vx) + 1, total: chainNodes.length }))}</div>` +
+      `<label><span>${esc(t("f_line_type_pt"))}</span><select data-vx="line">${enumOptions(Apt.enums.line_types, vx.line || 0)}</select></label>` +
+      `<label><span>${esc(t("f_light_type_pt"))}</span><select data-vx="light">${enumOptions(Apt.enums.light_types, vx.light || 0)}</select></label>` +
+      `<label class="check"><input type="checkbox" data-vx="curve" ${vx.ctrl ? "checked" : ""}> ${esc(t("pointCurved"))}</label>` +
+      `<div class="row three"><label><span>${esc(t("lat"))}</span><input data-vx="lat" type="number" step="any" value="${vx.lat}"></label><label><span>${esc(t("lon"))}</span><input data-vx="lon" type="number" step="any" value="${vx.lon}"></label></div>` +
+      `<p class="hint">${esc(t("pointHint"))}</p></div>`;
+  } else if (chainNodes) {
+    html += `<p class="hint">${esc(t("pointPickHint"))}</p>`;
+  }
   if (ln === "placements") {
     html += `<p class="hint">${esc(item.path)}</p><label><span>${esc(t("placeAsset"))}</span><span class="path-row"><input data-path="path" data-type="text" value="${esc(item.path)}"><button class="libpick" data-for="af-pp" data-types="${placeTool(item) === "object" ? "obj,agp" : placeTool(item) === "lin" ? "lin,str" : placeTool(item)}">${esc(t("fromLibrary"))}</button></span></label><input id="af-pp" type="hidden">`;
     const ext = placeExt(item);
@@ -807,6 +825,33 @@ function renderProps() {
       const nodes = ln === "lines" ? item.nodes : item.rings.flat();
       nodes.forEach((n) => { n[el.dataset.nodes] = parseInt(el.value, 10) || 0; });
       apply();
+    };
+  });
+  box.querySelectorAll("[data-vx]").forEach((el) => {
+    el.onchange = () => {
+      snapApt();
+      const k = el.dataset.vx;
+      if (k === "line" || k === "light") vx[k] = parseInt(el.value, 10) || 0;
+      else if (k === "lat" || k === "lon") {
+        const v = parseFloat(el.value);
+        if (vx.ctrl) vx.ctrl = k === "lon" ? [vx.ctrl[0] + v - vx.lon, vx.ctrl[1]] : [vx.ctrl[0], vx.ctrl[1] + v - vx.lat];
+        vx[k] = v;
+      } else if (k === "curve") {
+        if (!el.checked) vx.ctrl = null;
+        else {
+          // start with a handle along the line through the neighbours, a quarter of the way to them
+          const ring = ln === "lines" ? item.nodes : item.rings.find((r) => r.includes(vx));
+          const i = ring.indexOf(vx);
+          const closed = ln !== "lines" || item.closed;
+          const prev = ring[i - 1] || (closed ? ring[ring.length - 1] : vx);
+          const next = ring[i + 1] || (closed ? ring[0] : vx);
+          vx.ctrl = [vx.lon + (next.lon - prev.lon) / 4, vx.lat + (next.lat - prev.lat) / 4];
+        }
+      }
+      markDirty();
+      redrawItem(ln, item);
+      if (Apt.editor) Apt.editor.render();
+      renderProps();
     };
   });
   box.querySelectorAll("[data-coord]").forEach((el) => {

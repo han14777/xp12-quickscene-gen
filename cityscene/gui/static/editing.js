@@ -8,32 +8,53 @@
 class VertexEditor {
   // rings(): arrays of points; get(p) -> [lat, lng]; set(p, lat, lng) moves p; make(lat, lng, neighbour) -> new point
   // closed: whether the last point joins the first; min: fewest points per ring; noInsert: no midpoint handles;
-  // onDrag(): while dragging; onChange(): after every change
+  // onDrag(): while dragging; onChange(): after every change; onSelect(p, ring, index): a vertex was clicked
+  // (null when cleared). Bezier points: getCtrl(p) -> [lat, lng] or null and setCtrl(p, lat, lng) show the selected
+  // vertex's control handle and its mirror, both draggable.
   constructor(mapRef, o) {
     this.map = mapRef;
     this.o = Object.assign({ closed: true, min: 2, onChange: () => {} }, o);
     this.layer = L.layerGroup().addTo(mapRef);
+    this.selected = null;
     this.render();
+  }
+
+  select(p) {
+    this.selected = p;
+    this.render();
+    if (this.o.onSelect) {
+      const rings = this.o.rings();
+      const ri = rings.findIndex((r) => r.includes(p));
+      this.o.onSelect(p, ri, ri >= 0 ? rings[ri].indexOf(p) : -1);
+    }
   }
 
   render() {
     this.layer.clearLayers();
     const rings = this.o.rings();
+    if (this.selected && !rings.some((r) => r.includes(this.selected))) this.selected = null;
     rings.forEach((ring, ri) => {
       ring.forEach((p, i) => {
-        const m = L.marker(this.o.get(p), { draggable: true, icon: VertexEditor.icon("v"), zIndexOffset: 1000, keyboard: false });
+        const on = p === this.selected;
+        const m = L.marker(this.o.get(p), { draggable: true, icon: VertexEditor.icon(on ? "s" : "v"), zIndexOffset: on ? 1100 : 1000, keyboard: false });
         m.on("drag", (e) => { const ll = e.target.getLatLng(); this.o.set(p, ll.lat, ll.lng); this.o.onDrag && this.o.onDrag(); });
         m.on("dragend", () => { this.o.onChange(); this.render(); });
         const remove = (e) => {
           L.DomEvent.stop(e);
           if (ring.length <= this.o.min) return;
           ring.splice(i, 1);
+          if (p === this.selected) this.selected = null;
           this.o.onChange();
           this.render();
         };
         m.on("contextmenu", remove);
-        m.on("click", (e) => { if (e.originalEvent.altKey) remove(e); });
+        m.on("click", (e) => {
+          if (e.originalEvent.altKey) return remove(e);
+          L.DomEvent.stop(e);
+          if (this.o.onSelect || this.o.getCtrl) this.select(on ? null : p);
+        });
         this.layer.addLayer(m);
+        if (on && this.o.getCtrl) this.renderCtrl(p);
         const last = i === ring.length - 1;
         if (this.o.noInsert || (last && !this.o.closed)) return;
         const q = ring[(i + 1) % ring.length];
@@ -51,10 +72,35 @@ class VertexEditor {
     });
   }
 
+  renderCtrl(p) {
+    const c = this.o.getCtrl(p);
+    if (!c) return;
+    const at = this.o.get(p);
+    const mirror = () => { const c2 = this.o.getCtrl(p); return [2 * at[0] - c2[0], 2 * at[1] - c2[1]]; };
+    const guide = L.polyline([mirror(), at, c], { color: "#f2a900", weight: 1, dashArray: "3 3", interactive: false });
+    this.layer.addLayer(guide);
+    const handle = (pos, isMirror) => {
+      const h = L.marker(pos, { draggable: true, icon: VertexEditor.icon("c"), zIndexOffset: 1200, keyboard: false });
+      h.on("drag", (e) => {
+        const ll = e.target.getLatLng();
+        const lat = isMirror ? 2 * at[0] - ll.lat : ll.lat;
+        const lng = isMirror ? 2 * at[1] - ll.lng : ll.lng;
+        this.o.setCtrl(p, lat, lng);
+        guide.setLatLngs([mirror(), at, this.o.getCtrl(p)]);
+        this.o.onDrag && this.o.onDrag();
+      });
+      h.on("dragend", () => { this.o.onChange(); this.render(); });
+      this.layer.addLayer(h);
+    };
+    handle(c, false);
+    handle(mirror(), true);
+  }
+
   remove() { this.map.removeLayer(this.layer); }
 
   static icon(kind) {
-    return L.divIcon({ className: kind === "v" ? "vx-handle" : "vx-mid", iconSize: kind === "v" ? [11, 11] : [9, 9] });
+    const cls = { v: "vx-handle", s: "vx-handle vx-on", m: "vx-mid", c: "vx-ctrl" }[kind];
+    return L.divIcon({ className: cls, iconSize: kind === "m" ? [9, 9] : kind === "c" ? [9, 9] : [11, 11] });
   }
 }
 
