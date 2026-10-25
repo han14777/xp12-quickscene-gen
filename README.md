@@ -21,7 +21,7 @@ QuickScene was called *xp12-cityscene-gen* / *CityScene* up to v0.1.1. Packs mad
 ## Download (Windows)
 
 No Python needed: download the Windows zip from
-[Releases](https://github.com/han14777/xp12-cityscene-gen/releases/latest), unzip it anywhere you can write to,
+[Releases](https://github.com/han14777/quickscene/releases/latest), unzip it anywhere you can write to,
 and double-click the exe (`QuickScene.exe`; `CityScene.exe` up to v0.1.1). The UI opens in your browser. On first
 start DSFTool is downloaded from Laminar Research (files.x-plane.com, checked against a SHA-256) into the `tools`
 folder, and X-Plane 12 is found automatically. Projects and generated scenery stay inside the unzipped folder.
