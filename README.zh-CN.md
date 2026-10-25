@@ -18,7 +18,7 @@ QuickScene 在 v0.1.1 及以前叫 *xp12-cityscene-gen* / *CityScene*，那些�
 
 ## 下载（Windows）
 
-不需要 Python：从 [Releases](https://github.com/han14777/quickscene/releases/latest) 下载 Windows 压缩包，
+不需要 Python：从 [Releases](https://github.com/han14777/xp12-quickscene-gen/releases/latest) 下载 Windows 压缩包，
 解压到任何可写的位置，双击 exe（`QuickScene.exe`；v0.1.1 及以前是 `CityScene.exe`），浏览器会打开界面。首次启动时会从
 Laminar Research（files.x-plane.com，SHA-256 校验）下载 DSFTool 到 `tools` 文件夹，并自动找到 X-Plane 12。
 项目和生成的地景都保存在解压出来的文件夹里。
